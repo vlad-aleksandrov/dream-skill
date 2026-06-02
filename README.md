@@ -38,13 +38,13 @@ If nothing is detected, defaults to native Claude Code memory.
 ### Option 1: Clone into skills directory
 
 ```bash
-git clone https://github.com/grandamenium/dream-skill.git ~/.claude/skills/dream
+git clone https://github.com/vlad-aleksandrov/dream-skill.git ~/.claude/skills/dream
 ```
 
 ### Option 2: Run the installer
 
 ```bash
-git clone https://github.com/grandamenium/dream-skill.git /tmp/dream-skill
+git clone https://github.com/vlad-aleksandrov/dream-skill.git /tmp/dream-skill
 bash /tmp/dream-skill/install.sh --auto
 ```
 
