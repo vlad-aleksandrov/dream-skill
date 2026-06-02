@@ -32,6 +32,12 @@ install_skill() {
     cp "$SCRIPT_DIR/should-dream.sh" "$SKILL_DIR/should-dream.sh"
     cp "$SCRIPT_DIR/dream-hook.sh" "$SKILL_DIR/dream-hook.sh"
     chmod +x "$SKILL_DIR/should-dream.sh" "$SKILL_DIR/dream-hook.sh"
+
+    # Register /dream as a Claude Code slash command
+    mkdir -p "$HOME/.claude/commands"
+    cat > "$HOME/.claude/commands/dream.md" << 'CMDEOF'
+Read `~/.claude/skills/dream/SKILL.md` and execute the dream memory consolidation — all phases in order. This is an autonomous memory maintenance task; run all phases completely without asking for confirmation.
+CMDEOF
     ok "Skill installed. Use /dream in Claude Code to run manually."
 }
 
@@ -117,6 +123,7 @@ else:
 uninstall() {
     info "Removing dream skill"
     rm -rf "$SKILL_DIR"
+    rm -f "$HOME/.claude/commands/dream.md"
 
     if [[ -f "$SETTINGS_FILE" ]]; then
         python3 -c "
