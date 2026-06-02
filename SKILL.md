@@ -150,7 +150,7 @@ Session ends
 Next session starts
   --> Claude reads CLAUDE.md, sees .dream-pending exists
   --> Spawns /dream as background subagent
-  --> Dream runs all 4 phases
+  --> Dream runs all phases
   --> Writes .last-dream timestamp, deletes .dream-pending
   --> Timer resets for next 24hrs
 ```
@@ -220,7 +220,7 @@ print(p.replace('~', os.environ['HOME']))
 fi
 # Fall back to explicit override in .dream-config
 if [[ -z "$BRAIN_PATH" ]]; then
-    BRAIN_PATH=$(grep '^DREAM_BRAIN_PATH=' ~/.claude/skills/dream/.dream-config 2>/dev/null | cut -d= -f2 | sed "s|~|$HOME|g")
+    BRAIN_PATH=$(grep '^DREAM_BRAIN_PATH=' ~/.claude/skills/dream/.dream-config 2>/dev/null | cut -d= -f2- | sed "s|~|$HOME|g")
 fi
 ```
 
@@ -385,7 +385,7 @@ The Quick Reference section is for facts so important they should be seen every 
 
 ### Record the dream timestamp
 
-After completing all 4 phases, write timestamps so the auto-trigger knows when you last dreamed:
+After completing Phase 4 (L1 consolidation), write timestamps so the auto-trigger knows when you last dreamed:
 ```bash
 date +%s > ~/.claude/projects/<project>/memory/.last-dream
 rm -f ~/.claude/.dream-pending
@@ -415,7 +415,7 @@ REPORT_FILE=~/.claude/.dream-reports/$(date +%Y-%m-%d).md
 ```bash
 cp -r ~/.claude/projects/<project>/memory/ ~/.claude/projects/<project>/memory-backup-$(date +%Y%m%d)/
 ```
-- **Dry run option.** On first use, read through all 4 phases but only print what you WOULD change, without writing. Confirm with the user before applying.
+- **Dry run option.** On first use, read through all phases but only print what you WOULD change, without writing. Confirm with the user before applying.
 
 ---
 
@@ -488,7 +488,11 @@ grep -rL 'last-updated::' "$BRAIN_PATH/pages/Projects___"*.md 2>/dev/null
 Record each as a warning in the report. Do not fabricate timestamps.
 
 **Stale active projects:**
-For each `Projects___*.md` with `status:: active`: read `last-updated::`. Compute days since 2026-06-02. If > 14 days: record as warning. No auto-fix.
+For each `Projects___*.md` with `status:: active`: read `last-updated::`. Compute days since today:
+```bash
+TODAY=$(date +%Y-%m-%d)
+```
+If > 14 days since `last-updated::`: record as warning. No auto-fix.
 
 **Broken internal links:**
 For each `Projects___*.md`, extract all `[[...]]` patterns with:
@@ -531,7 +535,14 @@ If not found: append the child link under the relevant section using Edit. Recor
 ```bash
 grep -rl 'confidence:: high' "$BRAIN_PATH/pages/Wiki___"*.md 2>/dev/null
 ```
-For each: read `updated::`. If the date is before 2026-03-03 (90 days before today 2026-06-02): use Edit to replace `confidence:: high` with `confidence:: stale`. Record fix.
+For each: read `updated::`. Compute the cutoff date (90 days before today):
+```bash
+# Linux
+STALE_CUTOFF=$(date -d '90 days ago' +%Y-%m-%d 2>/dev/null)
+# macOS fallback
+[[ -z "$STALE_CUTOFF" ]] && STALE_CUTOFF=$(date -v-90d +%Y-%m-%d 2>/dev/null)
+```
+If `updated::` is before `$STALE_CUTOFF`: use Edit to replace `confidence:: high` with `confidence:: stale`. Record fix.
 
 **Missing default properties (auto-fix where safe):**
 For each `Wiki___*.md`:

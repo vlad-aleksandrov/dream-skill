@@ -346,12 +346,6 @@ do_teardown() {
 
     info "Removing test environment at $BASE_DIR"
     rm -rf "$BASE_DIR"
-
-    if [[ -n "$LINT_BRAIN_DIR" && -d "$LINT_BRAIN_DIR" ]]; then
-        info "Removing lint test brain at $LINT_BRAIN_DIR"
-        rm -rf "$LINT_BRAIN_DIR"
-    fi
-
     pass "Test environment removed."
 }
 
@@ -371,9 +365,11 @@ do_lint_setup() {
     mkdir -p "$LINT_BRAIN_DIR/pages" "$LINT_BRAIN_DIR/journals"
 
     # Write a minimal .brain-config.json so the skill can find this test brain
-    cat > "$LINT_BRAIN_DIR/.brain-config.json" << CFGEOF
-{"graphPath": "$LINT_BRAIN_DIR", "gitAutoPush": false}
-CFGEOF
+    # Use python3 to ensure the path is properly JSON-escaped
+    python3 -c "
+import json, sys
+print(json.dumps({'graphPath': sys.argv[1], 'gitAutoPush': False}))
+" "$LINT_BRAIN_DIR" > "$LINT_BRAIN_DIR/.brain-config.json"
 
     git -C "$LINT_BRAIN_DIR" init --quiet
     git -C "$LINT_BRAIN_DIR" commit --allow-empty -m "init" --quiet
