@@ -645,6 +645,305 @@ do_lint_teardown() {
 }
 
 # ============================================================================
+# PROMOTE SETUP - Create L1/L2/L3 fixtures for Phase 6 promotion tests
+# ============================================================================
+
+PROMO_BRAIN_DIR="$HOME/.claude/dream-promo-test-brain"
+PROMO_L1_DIR="$HOME/.claude/projects/dream-promo-test-l1"
+
+do_promote_setup() {
+    if [[ -d "$PROMO_BRAIN_DIR" ]]; then
+        warn "Promote test brain already exists. Run '$0 promote-teardown' first."
+        exit 1
+    fi
+
+    info "Creating promote test brain at $PROMO_BRAIN_DIR"
+    mkdir -p "$PROMO_BRAIN_DIR/pages" "$PROMO_BRAIN_DIR/journals"
+
+    python3 -c "
+import json, sys
+print(json.dumps({'graphPath': sys.argv[1], 'gitAutoPush': False}))
+" "$PROMO_BRAIN_DIR" > "$PROMO_BRAIN_DIR/.brain-config.json"
+
+    git -C "$PROMO_BRAIN_DIR" init --quiet
+    git -C "$PROMO_BRAIN_DIR" commit --allow-empty -m "init" --quiet
+
+    # --- L3: Target wiki pages (empty/stub — Dream should enrich them) ---
+    cat > "$PROMO_BRAIN_DIR/pages/Wiki___Reference___Failure-Patterns.md" << 'FPEOF'
+- type:: knowledge
+- domain:: tech
+- created:: 2026-05-01
+- updated:: 2026-05-01
+- confidence:: medium
+- ## Failure Patterns Accumulator
+	- Cross-project recurring failure patterns discovered during Claude Code sessions.
+	- [[Wiki/Reference]]
+- ## Patterns
+	- _No patterns recorded yet._
+FPEOF
+
+    cat > "$PROMO_BRAIN_DIR/pages/Wiki___Learning___AI-Dev-Workflow-Patterns.md" << 'WFEOF'
+- type:: knowledge
+- domain:: tech
+- created:: 2026-05-01
+- updated:: 2026-05-01
+- confidence:: medium
+- ## AI Dev Workflow Patterns
+	- Cross-project workflow patterns for Claude Code sessions.
+	- [[Wiki/Learning]]
+- ## Workflows
+	- _No workflows recorded yet._
+WFEOF
+
+    cat > "$PROMO_BRAIN_DIR/pages/Wiki___Reference.md" << 'REFHUBEOF'
+- type:: hub
+- namespace:: Wiki/Reference
+- updated:: 2026-05-01
+- ## Reference
+	- [[Wiki/Reference/Failure-Patterns]] -- cross-project failure patterns
+REFHUBEOF
+
+    cat > "$PROMO_BRAIN_DIR/pages/Wiki___Learning.md" << 'LEARNHUBEOF'
+- type:: hub
+- namespace:: Wiki/Learning
+- updated:: 2026-05-01
+- ## Learning
+	- [[Wiki/Learning/AI-Dev-Workflow-Patterns]] -- workflow patterns for agentic dev
+LEARNHUBEOF
+
+    # --- L2: A completed project with durable learnings in Session Log ---
+    cat > "$PROMO_BRAIN_DIR/pages/Projects___Completed-Spike.md" << 'PROJEOF'
+type:: project
+status:: completed
+created:: 2026-04-01
+last-updated:: 2026-04-15
+
+- ## Overview
+  - Spike to evaluate SQLite vs PostgreSQL for local dev environment.
+- ## Decisions
+  - 2026-04-10: chose SQLite for local dev, keep PostgreSQL for production
+    - context:: needed lightweight local setup with no daemon
+    - rationale:: SQLite requires zero config, no port conflicts, works inside CI containers; PostgreSQL reserved for production parity
+    - status:: accepted
+- ## Session Log
+  - 2026-04-15 — Spike complete. Key finding: always run `PRAGMA journal_mode=WAL` for SQLite in concurrent test scenarios — default rollback journal causes lock contention with >2 parallel test workers.
+  - 2026-04-10 — Evaluated both options. SQLite wins for dev, Postgres for prod.
+PROJEOF
+
+    # --- L2: An active project that has been dormant for 50 days ---
+    cat > "$PROMO_BRAIN_DIR/pages/Projects___Old-Active.md" << 'OLDPROJEOF'
+type:: project
+status:: active
+created:: 2026-03-01
+last-updated:: 2026-04-01
+
+- ## Overview
+  - Investigating webhook retry storm behavior.
+- ## Decisions
+  - 2026-03-15: exponential backoff with jitter is required for all webhook retries — linear backoff caused thundering herd during a 5-minute outage window
+    - context:: production incident: 40k retries within 60s overwhelmed the endpoint
+    - rationale:: jitter spreads retry load; without it all clients retry at the same intervals
+    - status:: accepted
+- ## Session Log
+  - 2026-04-01 — Investigation complete. Root cause documented. No code changes needed — retry library already supports jitter, just wasn't configured.
+OLDPROJEOF
+
+    # --- L1: Cross-project feedback file (no project-specific identifiers) ---
+    mkdir -p "$PROMO_L1_DIR/memory"
+    cat > "$PROMO_L1_DIR/memory/feedback_always_read_before_write.md" << 'FEEDEOF'
+---
+name: feedback-always-read-before-write
+description: Always read the current state of a resource before overwriting it
+metadata:
+  type: feedback
+---
+
+Always fetch the current state of a mutable resource before sending an update.
+The resource may have been changed by another process, a user, or a concurrent
+agent since you last read it. Sending a full replacement without reading first
+risks silently overwriting changes you didn't know about.
+
+**Why:** Learned after nearly overwriting a manually-added diagram in a document
+that was being managed by an automated update script.
+
+**How to apply:** Before any write/update/replace operation on a shared resource
+(document, config file, database row), perform a read first. Apply your change
+as a delta, not a full replacement.
+FEEDEOF
+
+    # --- L1: Cross-project workflow file ---
+    cat > "$PROMO_L1_DIR/memory/workflow_tracer_first.md" << 'WFEOF'
+---
+name: workflow-tracer-first
+description: Always validate the riskiest assumption first before parallel work
+metadata:
+  type: feedback
+---
+
+Before dispatching parallel sub-tasks, identify the riskiest assumption in the
+plan and validate it first with a single tracer prompt. If the tracer fails,
+the plan needs revision — you avoid wasting N parallel agent runs on a broken
+premise.
+
+**Why:** Repeatedly wasted parallel agent tokens when the core approach turned
+out to be wrong only after all agents completed.
+
+**How to apply:** At the start of any multi-step task, ask "what single thing
+would invalidate this entire plan if it's wrong?" Run that first. Only fan out
+after the tracer passes.
+WFEOF
+
+    cat > "$PROMO_L1_DIR/memory/MEMORY.md" << 'MEMEOF'
+# Memory Index
+
+- [Always read before write](feedback_always_read_before_write.md) — fetch current state before overwriting shared resources
+- [Tracer-first workflow](workflow_tracer_first.md) — validate riskiest assumption before parallel work
+MEMEOF
+
+    # Write .dream-config pointing at the test brain
+    REAL_CONFIG="$HOME/.claude/skills/dream/.dream-config"
+    if [[ -f "$REAL_CONFIG" ]]; then
+        cp "$REAL_CONFIG" "${REAL_CONFIG}.promo-test-backup"
+    fi
+    mkdir -p "$HOME/.claude/skills/dream"
+    echo "DREAM_MEMORY_TYPE=native" > "$REAL_CONFIG"
+    echo "DREAM_BRAIN_PATH=$PROMO_BRAIN_DIR" >> "$REAL_CONFIG"
+
+    echo ""
+    info "Promote test environment created!"
+    echo ""
+    echo "=== KNOWN PROMOTIONS PHASE 6 SHOULD APPLY ==="
+    echo ""
+    echo "  L1 → L3 (cross-project feedback/workflow → wiki):"
+    echo "  1. feedback_always_read_before_write.md → Wiki/Reference/Failure-Patterns"
+    echo "  2. workflow_tracer_first.md → Wiki/Learning/AI-Dev-Workflow-Patterns"
+    echo ""
+    echo "  L2 → L3 (completed/dormant project learnings → wiki):"
+    echo "  3. Projects/Completed-Spike: SQLite WAL pragma tip → Wiki/Reference/Failure-Patterns"
+    echo "     and SQLite-vs-Postgres decision → (possible new Wiki/Tech/SQLite or Failure-Patterns)"
+    echo "  4. Projects/Old-Active: webhook retry jitter → Wiki/Reference/Failure-Patterns"
+    echo ""
+    echo "=== NEXT STEPS ==="
+    echo ""
+    echo "  1. Open Claude Code in this project"
+    echo "  2. Run: /dream"
+    echo "  3. After it completes, run: $0 promote-verify"
+    echo ""
+}
+
+# ============================================================================
+# PROMOTE VERIFY - Check Phase 6 promotion results
+# ============================================================================
+do_promote_verify() {
+    if [[ ! -d "$PROMO_BRAIN_DIR" ]]; then
+        fail "Promote test brain does not exist. Run '$0 promote-setup' first."
+        exit 1
+    fi
+
+    echo ""
+    info "Verifying Phase 6 promotion results..."
+    echo ""
+
+    local total=0
+    local passed=0
+
+    run_check() {
+        total=$((total + 1))
+        if eval "$1"; then
+            pass "$2"
+            passed=$((passed + 1))
+        else
+            fail "$2"
+        fi
+    }
+
+    PAGES="$PROMO_BRAIN_DIR/pages"
+    FP="$PAGES/Wiki___Reference___Failure-Patterns.md"
+    WF="$PAGES/Wiki___Learning___AI-Dev-Workflow-Patterns.md"
+    L1_MEM="$PROMO_L1_DIR/memory"
+
+    # --- L1 → L3: feedback promoted to Failure-Patterns ---
+    run_check "! grep -q '_No patterns recorded yet._' '$FP'" \
+        "L1→L3: Failure-Patterns no longer empty"
+
+    run_check "grep -qi 'read\|fetch\|overwrite\|write' '$FP'" \
+        "L1→L3: read-before-write pattern promoted to Failure-Patterns"
+
+    run_check "grep -q 'promoted-from' '$FP' || grep -q 'promoted-from' '$WF'" \
+        "Promoted entries have promoted-from:: attribution"
+
+    # --- L1 → L3: workflow promoted to AI-Dev-Workflow-Patterns ---
+    run_check "! grep -q '_No workflows recorded yet._' '$WF'" \
+        "L1→L3: AI-Dev-Workflow-Patterns no longer empty"
+
+    run_check "grep -qi 'tracer\|riskiest\|parallel\|assumption' '$WF'" \
+        "L1→L3: tracer-first pattern promoted to AI-Dev-Workflow-Patterns"
+
+    # --- L1 source files have See also backlinks ---
+    run_check "grep -qi 'See also' '$L1_MEM/feedback_always_read_before_write.md'" \
+        "L1 source feedback file has See also backlink added"
+
+    run_check "grep -qi 'See also' '$L1_MEM/workflow_tracer_first.md'" \
+        "L1 source workflow file has See also backlink added"
+
+    # --- L2 → L3: completed project learnings promoted ---
+    run_check "grep -qi 'sqlite\|WAL\|journal\|lock\|retry\|jitter\|backoff' '$FP' || grep -qi 'sqlite\|WAL\|journal\|lock\|retry\|jitter\|backoff' '$WF'" \
+        "L2→L3: durable learning from completed/dormant project promoted to wiki"
+
+    # --- L2 brain pages marked as promoted ---
+    COMPLETED="$PAGES/Projects___Completed-Spike.md"
+    OLD_ACTIVE="$PAGES/Projects___Old-Active.md"
+    run_check "grep -q 'promoted-to' '$COMPLETED' || grep -q 'promoted-to' '$OLD_ACTIVE'" \
+        "L2 brain pages have promoted-to:: annotations"
+
+    # --- Git commit in brain ---
+    run_check "git -C '$PROMO_BRAIN_DIR' log --oneline 2>/dev/null | grep -q 'dream-promote'" \
+        "Promotion writes committed to brain git repo"
+
+    # --- Report has promotion section ---
+    REPORT=$(ls -t ~/.claude/.dream-reports/*.md 2>/dev/null | head -1)
+    run_check "[[ -n '$REPORT' ]] && grep -q 'Promotions' '$REPORT' 2>/dev/null" \
+        "Report archive contains Promotions section"
+
+    echo ""
+    echo "=============================="
+    echo -e "  Results: ${passed}/${total} checks passed"
+    echo "=============================="
+    echo ""
+
+    if [[ $passed -eq $total ]]; then
+        echo -e "${GREEN}All promote checks passed!${NC}"
+    elif [[ $passed -ge $((total * 3 / 4)) ]]; then
+        echo -e "${YELLOW}Most checks passed. Review failures above.${NC}"
+    else
+        echo -e "${RED}Several checks failed. Phase 6 needs work.${NC}"
+    fi
+    echo ""
+}
+
+# ============================================================================
+# PROMOTE TEARDOWN - Clean up promote fixtures
+# ============================================================================
+do_promote_teardown() {
+    info "Removing promote test brain at $PROMO_BRAIN_DIR"
+    rm -rf "$PROMO_BRAIN_DIR"
+
+    info "Removing promote L1 test project"
+    rm -rf "$PROMO_L1_DIR"
+
+    REAL_CONFIG="$HOME/.claude/skills/dream/.dream-config"
+    BACKUP="${REAL_CONFIG}.promo-test-backup"
+    if [[ -f "$BACKUP" ]]; then
+        mv "$BACKUP" "$REAL_CONFIG"
+        info "Restored original .dream-config"
+    elif [[ -f "$REAL_CONFIG" ]]; then
+        rm -f "$REAL_CONFIG"
+    fi
+
+    pass "Promote test environment removed."
+}
+
+# ============================================================================
 # Main
 # ============================================================================
 case "${1:-}" in
@@ -666,16 +965,29 @@ case "${1:-}" in
     lint-teardown)
         do_lint_teardown
         ;;
+    promote-setup)
+        do_promote_setup
+        ;;
+    promote-verify)
+        do_promote_verify
+        ;;
+    promote-teardown)
+        do_promote_teardown
+        ;;
     *)
-        echo "Usage: $0 {setup|verify|teardown|lint-setup|lint-verify|lint-teardown}"
+        echo "Usage: $0 {setup|verify|teardown|lint-setup|lint-verify|lint-teardown|promote-setup|promote-verify|promote-teardown}"
         echo ""
-        echo "  setup          - Create L1 test fixtures (original dream phases 1-4)"
-        echo "  verify         - Verify phases 1-4 results"
-        echo "  teardown       - Remove all test fixtures"
+        echo "  setup             - Create L1 test fixtures (phases 1-4)"
+        echo "  verify            - Verify phases 1-4 results"
+        echo "  teardown          - Remove L1 test fixtures"
         echo ""
-        echo "  lint-setup     - Create L2/L3 lint test fixtures (phase 5)"
-        echo "  lint-verify    - Verify phase 5 lint results"
-        echo "  lint-teardown  - Remove lint test fixtures"
+        echo "  lint-setup        - Create L2/L3 lint test fixtures (phase 5)"
+        echo "  lint-verify       - Verify phase 5 lint results"
+        echo "  lint-teardown     - Remove lint test fixtures"
+        echo ""
+        echo "  promote-setup     - Create L1/L2/L3 promotion test fixtures (phase 6)"
+        echo "  promote-verify    - Verify phase 6 promotion results"
+        echo "  promote-teardown  - Remove promotion test fixtures"
         exit 1
         ;;
 esac

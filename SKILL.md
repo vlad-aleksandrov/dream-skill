@@ -133,10 +133,10 @@ Everything is working. Now delete this entire ONBOARDING section from this SKILL
 
 ## How It Works
 
-Dream runs in 5 sequential phases. Execute them in order. Do not skip phases.
+Dream runs in 6 sequential phases. Execute them in order. Do not skip phases.
 
 ```
-ORIENT --> GATHER SIGNAL --> CONSOLIDATE --> PRUNE & INDEX --> LINT
+ORIENT --> GATHER SIGNAL --> CONSOLIDATE --> PRUNE & INDEX --> LINT --> PROMOTE
 ```
 
 ### Auto-trigger flow (native Claude Code hooks)
@@ -150,7 +150,7 @@ Session ends
 Next session starts
   --> Claude reads CLAUDE.md, sees .dream-pending exists
   --> Spawns /dream as background subagent
-  --> Dream runs all phases
+  --> Dream runs all 6 phases
   --> Writes .last-dream timestamp, deletes .dream-pending
   --> Timer resets for next 24hrs
 ```
@@ -613,11 +613,125 @@ REPORT_FILE=~/.claude/.dream-reports/$(date +%Y-%m-%d).md
 } >> "$REPORT_FILE"
 ```
 
-Print a final summary to the session output:
+Print a final summary to the session output after Phase 6 completes:
 ```
 Dream complete.
   L1: [N projects consolidated, N fixes]
   L2: [N brain pages checked, N fixes applied, N warnings]
   L3: [N wiki pages checked, N fixes applied, N warnings]
+  Promotions: [N applied (L1→L3: N, L1→L2: N, L2→L3: N)]
   Report: ~/.claude/.dream-reports/YYYY-MM-DD.md
+```
+
+---
+
+## Phase 6: PROMOTE
+
+**Goal:** Move knowledge to the right layer. All promotions are auto-applied without confirmation. See `references/promotion-rules.md` for the complete criteria, target mappings, and distillation rules.
+
+### Step 0: Brain path check
+
+Use the `BRAIN_PATH` detected in Phase 1. If it was not found: skip all steps and append "L2/L3 promotion skipped: brain path not found" to the report.
+
+### Step 1: L1 → L3 (Cross-project patterns to wiki)
+
+For each `feedback_*.md` and `workflow_*.md` in `~/.claude/projects/*/memory/`:
+
+**1a. Cross-project signal check.**
+Read the file. Scan for project-specific identifiers using the patterns in `references/promotion-rules.md §Cross-Project Signal Detection`. If any are found → skip this file.
+
+**1b. Near-duplicate check.**
+Extract 3–5 key terms from the filename and first substantive line. Search L3:
+```bash
+grep -ril "<key terms>" "$BRAIN_PATH/pages/Wiki___"*.md 2>/dev/null
+```
+If the wiki already covers this insight: add a `See also: [[Wiki/...]]` backlink to the L1 file (if absent), skip promotion, record as "already in L3". Move to next file.
+
+**1c. Select target wiki page.**
+Apply the Target Namespace Mapping from `references/promotion-rules.md`:
+- Gotcha / mistake-prevention → `Wiki___Reference___Failure-Patterns.md`
+- Workflow / process rule → `Wiki___Learning___AI-Dev-Workflow-Patterns.md`
+- `workflow_*.md` → `Wiki___Learning___AI-Dev-Workflow-Patterns.md`
+- `ref_*.md` tool research → closest `Wiki___Tech___<Tool>.md`
+
+If the target page doesn't exist: create it using the Schema template (`knowledge` type for patterns/workflows, `entity` type for tools). Hub pages must be updated to list the new child.
+
+**1d. Distill and append.**
+Read the target page. Write a new entry following the distillation format in `references/promotion-rules.md §Distillation Rules`. Append under the relevant section (`## Patterns`, `## Workflows`, or `## Key Decisions`). Update `updated::` on the target page using Edit.
+
+**1e. Add backlink to source.**
+Append `See also: [[Wiki/Namespace/Page]]` to the L1 source file using Edit. Record the promotion.
+
+### Step 2: L1 → L2 (Project implementation details to brain)
+
+For each `project_*.md` in `~/.claude/projects/*/memory/`:
+
+**2a. Match to brain project.**
+Extract a project key from the L1 directory name — take the last meaningful path segment (the portion after the final project-separator hyphen cluster):
+```bash
+# Example: ~/.claude/projects/-home-vladimir-dev-personal-antigravity-plugin-cc/memory/
+# basename of parent dir: -home-vladimir-dev-personal-antigravity-plugin-cc
+# project key (last word): antigravity-plugin-cc
+```
+Search for a matching brain page:
+```bash
+ls "$BRAIN_PATH/pages/Projects___"*.md 2>/dev/null | grep -i "$(echo $PROJECT_KEY | tr '-' '.')"
+```
+If no match found → skip.
+
+**2b. Diff L1 vs L2.**
+Read the L1 `project_*.md`. Read the matched brain page's `## Implementation` and `## Decisions` sections. Identify facts in L1 that are absent from L2 — typically: binary paths, auth mechanisms, interface flags, env vars, architecture decisions with rationale.
+
+If no new facts → skip, record as "already in L2".
+
+**2c. Append to brain page.**
+For each new fact: append a distilled bullet to `## Implementation` (facts) or `## Decisions` (choices with rationale). Update `last-updated::`. Record promotion.
+
+### Step 3: L2 → L3 (Graduated project knowledge to wiki)
+
+**3a. Identify candidates.**
+```bash
+# Completed projects
+grep -rl 'status:: completed' "$BRAIN_PATH/pages/Projects___"*.md 2>/dev/null
+
+# Dormant active projects (last-updated > 45 days)
+DORMANT_CUTOFF=$(date -d '45 days ago' +%Y-%m-%d 2>/dev/null || date -v-45d +%Y-%m-%d 2>/dev/null)
+```
+For each candidate: read `## Session Log` and `## Decisions`.
+
+**3b. Extract durable learnings.**
+Apply the eligibility rules from `references/promotion-rules.md §L2→L3 Eligibility`. Discard pure progress entries. Keep:
+- Technology/library choices with rationale
+- Recurring failure patterns that were resolved
+- Process insights that generalize beyond the project
+
+**3c. Near-duplicate check.**
+For each durable learning: grep relevant wiki pages for key terms. If already covered → skip that entry.
+
+**3d. Distill and write.**
+For each new learning: read the target wiki page. Write a distilled entry in Logseq outliner format — Dream digests; it does not dump raw session notes. Target pages follow the mapping in `references/promotion-rules.md §Target Namespace Mapping`. Update `updated::`.
+
+**3e. Mark source.**
+In the brain page, append `promoted-to:: [[Wiki/Namespace/Page]] (YYYY-MM-DD)` as a child of the promoted entry. Do not delete the source.
+
+### Step 4: Commit promotion writes
+
+If any promotions were applied to files inside `$BRAIN_PATH`:
+```bash
+PROMO_COUNT=<total promotions applied>
+git -C "$BRAIN_PATH" add -A
+git -C "$BRAIN_PATH" commit -m "dream-promote: $PROMO_COUNT promotions (L1→L3, L1→L2, L2→L3)"
+```
+Check `gitAutoPush` in `.brain-config.json` (same as Phase 5 Step 5). Push if true.
+
+### Step 5: Write promotion section to report
+
+```bash
+REPORT_FILE=~/.claude/.dream-reports/$(date +%Y-%m-%d).md
+{
+  echo "## Promotions Applied"
+  # one line per promotion: "L1/project/feedback_foo.md → Wiki/Reference/Failure-Patterns"
+  # or "- none"
+  echo ""
+} >> "$REPORT_FILE"
 ```
