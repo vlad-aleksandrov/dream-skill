@@ -346,7 +346,306 @@ do_teardown() {
 
     info "Removing test environment at $BASE_DIR"
     rm -rf "$BASE_DIR"
+
+    if [[ -n "$LINT_BRAIN_DIR" && -d "$LINT_BRAIN_DIR" ]]; then
+        info "Removing lint test brain at $LINT_BRAIN_DIR"
+        rm -rf "$LINT_BRAIN_DIR"
+    fi
+
     pass "Test environment removed."
+}
+
+# ============================================================================
+# LINT SETUP - Create L2/L3 fixtures with known lint issues
+# ============================================================================
+
+LINT_BRAIN_DIR="$HOME/.claude/dream-lint-test-brain"
+
+do_lint_setup() {
+    if [[ -d "$LINT_BRAIN_DIR" ]]; then
+        warn "Lint test brain already exists. Run '$0 lint-teardown' first."
+        exit 1
+    fi
+
+    info "Creating lint test brain at $LINT_BRAIN_DIR"
+    mkdir -p "$LINT_BRAIN_DIR/pages" "$LINT_BRAIN_DIR/journals"
+
+    # Write a minimal .brain-config.json so the skill can find this test brain
+    cat > "$LINT_BRAIN_DIR/.brain-config.json" << CFGEOF
+{"graphPath": "$LINT_BRAIN_DIR", "gitAutoPush": false}
+CFGEOF
+
+    git -C "$LINT_BRAIN_DIR" init --quiet
+    git -C "$LINT_BRAIN_DIR" commit --allow-empty -m "init" --quiet
+
+    # --- L2: Project page with wrong property key (updated:: instead of last-updated::) ---
+    cat > "$LINT_BRAIN_DIR/pages/Projects___Stale-Props.md" << 'PROJ1EOF'
+type:: project
+status:: active
+created:: 2026-05-01
+updated:: 2026-05-01
+
+- ## Overview
+  - Test project with wrong property key.
+- ## Current Plan
+  - _No active plan yet._
+- ## Session Log
+  - 2026-05-01 — Created.
+PROJ1EOF
+
+    # --- L2: Project page with a broken [[Wiki/...]] link ---
+    cat > "$LINT_BRAIN_DIR/pages/Projects___Broken-Links.md" << 'PROJ2EOF'
+type:: project
+status:: active
+created:: 2026-05-10
+last-updated:: 2026-05-10
+
+- ## Overview
+  - Test project with a broken internal wiki link.
+  - See [[Wiki/Tech/NonExistentPage]] for details.
+- ## Current Plan
+  - _No active plan yet._
+- ## Session Log
+  - 2026-05-10 — Created.
+PROJ2EOF
+
+    # --- L3: Wiki hub page missing a child entry ---
+    cat > "$LINT_BRAIN_DIR/pages/Wiki___Tech.md" << 'HUBEOF'
+- type:: hub
+- namespace:: Wiki/Tech
+- updated:: 2026-05-15
+- ## Tech
+	- [[Wiki/Tech/Docker]] -- container runtime
+HUBEOF
+
+    # Child exists as a file but is NOT listed in the hub
+    cat > "$LINT_BRAIN_DIR/pages/Wiki___Tech___Docker.md" << 'TECHEOF'
+- type:: entity
+- entity-type:: tool
+- created:: 2026-05-15
+- updated:: 2026-05-15
+- status:: active
+- source:: ingest
+- ## Docker
+	- Container runtime.
+	- [[Wiki/Tech]]
+TECHEOF
+
+    cat > "$LINT_BRAIN_DIR/pages/Wiki___Tech___Unlisted-Tool.md" << 'TECHEOF2'
+- type:: entity
+- entity-type:: tool
+- created:: 2026-05-15
+- updated:: 2026-05-15
+- status:: active
+- source:: ingest
+- ## Unlisted Tool
+	- This tool exists as a page but is NOT listed in the Wiki/Tech hub.
+	- [[Wiki/Tech]]
+TECHEOF2
+
+    # --- L3: Wiki page with a broken cross-reference ---
+    cat > "$LINT_BRAIN_DIR/pages/Wiki___Learning___Test-Topic.md" << 'LEARNEOF'
+- type:: knowledge
+- domain:: tech
+- created:: 2026-05-15
+- updated:: 2026-05-15
+- confidence:: high
+- ## Test Topic
+	- Some learning content.
+	- See also [[Wiki/Tech/NonExistentPage]] for more.
+	- [[Wiki/Tech/Docker]]
+LEARNEOF
+
+    # --- L3: Wiki page with stale high-confidence (updated > 90 days ago) ---
+    cat > "$LINT_BRAIN_DIR/pages/Wiki___Learning___Old-Topic.md" << 'OLDEOF'
+- type:: knowledge
+- domain:: tech
+- created:: 2025-11-01
+- updated:: 2025-11-01
+- confidence:: high
+- ## Old Topic
+	- Content that hasn't been updated in over 90 days.
+	- [[Wiki/Tech/Docker]]
+OLDEOF
+
+    # --- L3: Wiki entity page missing entity-type:: ---
+    cat > "$LINT_BRAIN_DIR/pages/Wiki___Tech___Missing-Props.md" << 'PROPEOF'
+- type:: entity
+- created:: 2026-05-20
+- updated:: 2026-05-20
+- source:: ingest
+- ## Missing Props Tool
+	- An entity page without entity-type:: or status:: properties.
+	- [[Wiki/Tech]]
+PROPEOF
+
+    # --- L1: feedback file with dead wiki link ---
+    mkdir -p "$HOME/.claude/projects/dream-lint-test-l1/memory"
+    cat > "$HOME/.claude/projects/dream-lint-test-l1/memory/feedback_test_dead_link.md" << FEEDEOF
+---
+name: feedback-test-dead-link
+description: Test feedback file with a dead wiki link
+metadata:
+  type: feedback
+---
+
+Always check something before doing it.
+
+**Why:** Test case for dead wiki link detection.
+
+See [[Wiki/Tech/NonExistentPage]]
+FEEDEOF
+
+    cat > "$HOME/.claude/projects/dream-lint-test-l1/memory/MEMORY.md" << 'MEMEOF'
+# Memory Index
+
+- [Test dead link feedback](feedback_test_dead_link.md) — test fixture with dead wiki link
+MEMEOF
+
+    # Write a fake .dream-config pointing at the test brain
+    # (backup real config if present, restore on teardown)
+    REAL_CONFIG="$HOME/.claude/skills/dream/.dream-config"
+    if [[ -f "$REAL_CONFIG" ]]; then
+        cp "$REAL_CONFIG" "${REAL_CONFIG}.lint-test-backup"
+    fi
+    mkdir -p "$HOME/.claude/skills/dream"
+    echo "DREAM_MEMORY_TYPE=native" > "$REAL_CONFIG"
+    echo "DREAM_BRAIN_PATH=$LINT_BRAIN_DIR" >> "$REAL_CONFIG"
+
+    echo ""
+    info "Lint test environment created!"
+    echo ""
+    echo "=== KNOWN ISSUES THE LINT PHASE SHOULD FIX ==="
+    echo ""
+    echo "  L2 fixes (auto-apply):"
+    echo "  1. Projects/Stale-Props: 'updated::' → 'last-updated::' property rename"
+    echo "  2. Projects/Broken-Links: remove broken [[Wiki/Tech/NonExistentPage]] link"
+    echo ""
+    echo "  L3 fixes (auto-apply):"
+    echo "  3. Wiki/Tech hub: missing child [[Wiki/Tech/Unlisted-Tool]] entry"
+    echo "  4. Wiki/Learning/Test-Topic: remove broken [[Wiki/Tech/NonExistentPage]] link"
+    echo "  5. Wiki/Learning/Old-Topic: confidence:: high → stale (updated 2025-11-01, >90 days)"
+    echo "  6. Wiki/Tech/Missing-Props: add entity-type:: (infer from content) + status:: active"
+    echo ""
+    echo "  L1 fixes (auto-apply):"
+    echo "  7. feedback_test_dead_link.md: remove dead [[Wiki/Tech/NonExistentPage]] link"
+    echo ""
+    echo "  Report only (no auto-fix):"
+    echo "  8. Projects/Broken-Links: has last-updated:: but might be stale warning"
+    echo ""
+    echo "=== NEXT STEPS ==="
+    echo ""
+    echo "  1. Open Claude Code in this project"
+    echo "  2. Run: /dream"
+    echo "  3. After it completes, run: $0 lint-verify"
+    echo ""
+}
+
+# ============================================================================
+# LINT VERIFY - Check Phase 5 lint results
+# ============================================================================
+do_lint_verify() {
+    if [[ ! -d "$LINT_BRAIN_DIR" ]]; then
+        fail "Lint test brain does not exist. Run '$0 lint-setup' first."
+        exit 1
+    fi
+
+    echo ""
+    info "Verifying Phase 5 lint results..."
+    echo ""
+
+    local total=0
+    local passed=0
+
+    run_check() {
+        total=$((total + 1))
+        if eval "$1"; then
+            pass "$2"
+            passed=$((passed + 1))
+        else
+            fail "$2"
+        fi
+    }
+
+    PAGES="$LINT_BRAIN_DIR/pages"
+    L1_MEM="$HOME/.claude/projects/dream-lint-test-l1/memory"
+
+    # --- L2 fixes ---
+    run_check "grep -q 'last-updated::' '$PAGES/Projects___Stale-Props.md' && ! grep -q '^updated::' '$PAGES/Projects___Stale-Props.md'" \
+        "L2: 'updated::' renamed to 'last-updated::' in Projects/Stale-Props"
+
+    run_check "! grep -q 'NonExistentPage' '$PAGES/Projects___Broken-Links.md'" \
+        "L2: broken [[Wiki/Tech/NonExistentPage]] link removed from Projects/Broken-Links"
+
+    # --- L3 fixes ---
+    run_check "grep -q 'Unlisted-Tool' '$PAGES/Wiki___Tech.md'" \
+        "L3: Wiki/Tech hub now lists [[Wiki/Tech/Unlisted-Tool]]"
+
+    run_check "! grep -q 'NonExistentPage' '$PAGES/Wiki___Learning___Test-Topic.md'" \
+        "L3: broken [[Wiki/Tech/NonExistentPage]] removed from Wiki/Learning/Test-Topic"
+
+    run_check "grep -q 'confidence:: stale' '$PAGES/Wiki___Learning___Old-Topic.md'" \
+        "L3: Wiki/Learning/Old-Topic confidence downgraded from high to stale"
+
+    run_check "grep -q 'entity-type::' '$PAGES/Wiki___Tech___Missing-Props.md'" \
+        "L3: entity-type:: added to Wiki/Tech/Missing-Props"
+
+    run_check "grep -q 'status:: active' '$PAGES/Wiki___Tech___Missing-Props.md'" \
+        "L3: status:: active added to Wiki/Tech/Missing-Props"
+
+    # --- L1 fixes ---
+    run_check "! grep -q 'NonExistentPage' '$L1_MEM/feedback_test_dead_link.md'" \
+        "L1: dead [[Wiki/Tech/NonExistentPage]] link removed from feedback file"
+
+    # --- Report archive ---
+    REPORT=$(ls -t ~/.claude/.dream-reports/*.md 2>/dev/null | head -1)
+    run_check "[[ -n '$REPORT' && -f '$REPORT' ]]" \
+        "Report archive written to ~/.claude/.dream-reports/"
+
+    run_check "[[ -n '$REPORT' ]] && grep -q '## Lint' '$REPORT' 2>/dev/null" \
+        "Report archive contains lint section"
+
+    # --- Git commit in brain ---
+    run_check "git -C '$LINT_BRAIN_DIR' log --oneline 2>/dev/null | grep -q 'dream-lint'" \
+        "L2/L3 fixes committed to brain git repo"
+
+    echo ""
+    echo "=============================="
+    echo -e "  Results: ${passed}/${total} checks passed"
+    echo "=============================="
+    echo ""
+
+    if [[ $passed -eq $total ]]; then
+        echo -e "${GREEN}All lint checks passed!${NC}"
+    elif [[ $passed -ge $((total * 3 / 4)) ]]; then
+        echo -e "${YELLOW}Most checks passed. Review failures above.${NC}"
+    else
+        echo -e "${RED}Several checks failed. Phase 5 needs work.${NC}"
+    fi
+    echo ""
+}
+
+# ============================================================================
+# LINT TEARDOWN - Clean up lint fixtures
+# ============================================================================
+do_lint_teardown() {
+    info "Removing lint test brain at $LINT_BRAIN_DIR"
+    rm -rf "$LINT_BRAIN_DIR"
+
+    info "Removing lint L1 test project"
+    rm -rf "$HOME/.claude/projects/dream-lint-test-l1"
+
+    # Restore real .dream-config if backed up
+    REAL_CONFIG="$HOME/.claude/skills/dream/.dream-config"
+    BACKUP="${REAL_CONFIG}.lint-test-backup"
+    if [[ -f "$BACKUP" ]]; then
+        mv "$BACKUP" "$REAL_CONFIG"
+        info "Restored original .dream-config"
+    elif [[ -f "$REAL_CONFIG" ]]; then
+        rm -f "$REAL_CONFIG"
+    fi
+
+    pass "Lint test environment removed."
 }
 
 # ============================================================================
@@ -362,12 +661,25 @@ case "${1:-}" in
     teardown)
         do_teardown
         ;;
+    lint-setup)
+        do_lint_setup
+        ;;
+    lint-verify)
+        do_lint_verify
+        ;;
+    lint-teardown)
+        do_lint_teardown
+        ;;
     *)
-        echo "Usage: $0 {setup|verify|teardown}"
+        echo "Usage: $0 {setup|verify|teardown|lint-setup|lint-verify|lint-teardown}"
         echo ""
-        echo "  setup     - Create test fixtures with known issues"
-        echo "  verify    - Check if dream skill fixed the issues"
-        echo "  teardown  - Remove test fixtures"
+        echo "  setup          - Create L1 test fixtures (original dream phases 1-4)"
+        echo "  verify         - Verify phases 1-4 results"
+        echo "  teardown       - Remove all test fixtures"
+        echo ""
+        echo "  lint-setup     - Create L2/L3 lint test fixtures (phase 5)"
+        echo "  lint-verify    - Verify phase 5 lint results"
+        echo "  lint-teardown  - Remove lint test fixtures"
         exit 1
         ;;
 esac

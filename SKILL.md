@@ -94,6 +94,10 @@ Add this to your global `~/.claude/CLAUDE.md` (or project CLAUDE.md):
 ```markdown
 ## Auto Dream
 If the file `~/.claude/.dream-pending` exists at session start, run `/dream` as a subagent in the background, then delete the flag file: `rm ~/.claude/.dream-pending`. This is the memory consolidation system - it runs automatically every 24 hours.
+
+At every session start also run:
+`ls -t ~/.claude/.dream-reports/*.md 2>/dev/null | head -1`
+If a report file exists, read its first 20 lines and tell the user in one sentence what the last dream did (fixes applied, warnings found). Say "show dream report YYYY-MM-DD" to read the full report.
 ```
 
 ### Step 4: Make should-dream.sh executable
@@ -130,10 +134,10 @@ Everything is working. Now delete this entire ONBOARDING section from this SKILL
 
 ## How It Works
 
-Dream runs in 4 sequential phases. Execute them in order. Do not skip phases.
+Dream runs in 5 sequential phases. Execute them in order. Do not skip phases.
 
 ```
-ORIENT --> GATHER SIGNAL --> CONSOLIDATE --> PRUNE & INDEX
+ORIENT --> GATHER SIGNAL --> CONSOLIDATE --> PRUNE & INDEX --> LINT
 ```
 
 ### Auto-trigger flow (native Claude Code hooks)
@@ -200,12 +204,40 @@ ls ./memory/*.md 2>/dev/null
 
 4. Read each topic file to understand what's already stored.
 
+### Step 5: Detect brain/wiki path
+
+Run this to auto-detect the Logseq brain location:
+
+```bash
+BRAIN_CONFIG=$(find ~/.claude/plugins/cache/skillsmith/logseq-brain/ -name ".brain-config.json" 2>/dev/null | sort | tail -1)
+if [[ -n "$BRAIN_CONFIG" ]]; then
+    BRAIN_PATH=$(python3 -c "
+import json, os
+with open('$BRAIN_CONFIG') as f:
+    d = json.load(f)
+p = d.get('graphPath', '')
+print(p.replace('~', os.environ['HOME']))
+" 2>/dev/null)
+fi
+# Fall back to explicit override in .dream-config
+if [[ -z "$BRAIN_PATH" ]]; then
+    BRAIN_PATH=$(grep '^DREAM_BRAIN_PATH=' ~/.claude/skills/dream/.dream-config 2>/dev/null | cut -d= -f2 | sed "s|~|$HOME|g")
+fi
+```
+
+If `BRAIN_PATH` resolves to an existing directory:
+```bash
+ls "$BRAIN_PATH/pages/Projects___"*.md 2>/dev/null | wc -l   # count brain project pages
+ls "$BRAIN_PATH/pages/Wiki___"*.md 2>/dev/null | wc -l        # count wiki pages
+```
+Note the path — Phase 5 will use it.
+
+If the path is empty or the directory doesn't exist: note "brain path not found — Phase 5 will run L1 lint only."
+
 ### Output of this phase
 You should now have a mental map of:
-- Which projects have memory
-- What topics are covered
-- How large the memory files are
-- What's potentially stale or contradictory
+- Which projects have L1 memory, what topics are covered, what's potentially stale
+- Whether an L2/L3 brain path is available for Phase 5
 
 ---
 
@@ -360,6 +392,21 @@ date +%s > ~/.claude/projects/<project>/memory/.last-dream
 rm -f ~/.claude/.dream-pending
 ```
 
+Then initialize the report archive entry for Phase 5 to append to:
+```bash
+mkdir -p ~/.claude/.dream-reports
+REPORT_FILE=~/.claude/.dream-reports/$(date +%Y-%m-%d).md
+# Write (or append) the L1 consolidation header
+{
+  echo "# Dream Report — $(date '+%Y-%m-%d %H:%M')"
+  echo ""
+  echo "## L1 Consolidation"
+  echo "- Projects: <list the projects that were consolidated>"
+  echo "- Added: N, updated: N, archived: N, contradictions: N, dates fixed: N"
+  echo ""
+} >> "$REPORT_FILE"
+```
+
 ---
 
 ## Safety
@@ -381,3 +428,186 @@ After running, verify the consolidation:
 3. Confirm no relative dates remain ("yesterday", "last week", etc.)
 4. Verify all topic files referenced in MEMORY.md actually exist
 5. Print a summary: entries added, entries updated, entries archived, contradictions resolved
+
+---
+
+## Phase 5: LINT
+
+**Goal:** Detect and auto-apply mechanical fixes across all three memory layers. Write findings to the report archive. See `references/lint-rules.md` for the complete rule table.
+
+### Step 0: Brain path check
+
+Use the `BRAIN_PATH` detected in Phase 1. If it was not found:
+- Run Step 1 (L1 lint) only
+- Append to the report: "L2/L3 lint skipped: brain path not found"
+- Skip Steps 2–5
+
+### Step 1: L1 Enhanced Lint
+
+**Dead wiki links in L1 files:**
+```bash
+grep -rl '\[\[Wiki/' ~/.claude/projects/*/memory/*.md 2>/dev/null
+```
+For each file found, extract all `[[Wiki/X/Y]]` patterns. Derive the expected file:
+`[[Wiki/Tech/Docker]]` → `$BRAIN_PATH/pages/Wiki___Tech___Docker.md`
+(replace `/` with `___`, prepend `Wiki___`).
+If the file doesn't exist: use Edit to remove that link from the L1 file. Record fix.
+
+**Orphaned project references:**
+```bash
+for dir in ~/.claude/projects/*/memory/; do
+    project=$(basename "$(dirname "$dir")")
+    for f in "$dir"project_*.md; do
+        [[ -f "$f" ]] || continue
+        # flag if project dir itself no longer matches any active project
+        echo "check: $project / $f"
+    done
+done
+```
+If a `project_*.md` file lives in a project directory that no longer corresponds to any real working directory (i.e., the path encoded in the directory name points nowhere), record as info in report. Do not delete.
+
+**L1/L3 near-duplicate detection:**
+For each `feedback_*.md` and `workflow_*.md` file in any L1 directory:
+1. Extract 3–5 key nouns from the filename and first meaningful line.
+2. Run: `grep -ril "<key terms>" "$BRAIN_PATH/pages/Wiki___"*.md 2>/dev/null`
+3. If matches found: read both files. If they express the same core insight (not incidental mention), check whether the L1 file already has a `See also: [[Wiki/...]]` backlink. If not, add one using Edit. Record as info.
+
+### Step 2: L2 Brain Lint
+
+For each file in `$BRAIN_PATH/pages/Projects___*.md`:
+
+**Property key typo (`updated::` → `last-updated::`):**
+```bash
+grep -rl '^updated::' "$BRAIN_PATH/pages/Projects___"*.md 2>/dev/null
+```
+For each file: use Edit to replace `updated::` with `last-updated::`. Record fix.
+
+**Missing `last-updated::`:**
+```bash
+grep -rL 'last-updated::' "$BRAIN_PATH/pages/Projects___"*.md 2>/dev/null
+```
+Record each as a warning in the report. Do not fabricate timestamps.
+
+**Stale active projects:**
+For each `Projects___*.md` with `status:: active`: read `last-updated::`. Compute days since 2026-06-02. If > 14 days: record as warning. No auto-fix.
+
+**Broken internal links:**
+For each `Projects___*.md`, extract all `[[...]]` patterns with:
+```bash
+grep -o '\[\[[^]]*\]\]' "$file"
+```
+Derive expected file for each:
+- `[[Projects/Foo/Bar]]` → `Pages/Projects___Foo___Bar.md`
+- `[[Wiki/X/Y]]` → `Pages/Wiki___X___Y.md`
+- `[[Meta]]` → `pages/Meta.md`
+- `[[Decisions]]` → `pages/Decisions.md`
+
+All paths relative to `$BRAIN_PATH`. If the file doesn't exist: remove the broken `[[link]]` from the line using Edit (remove just the `[[...]]` token, preserve surrounding text). If the entire line's only content is the broken link, remove the whole line. Record each fix.
+
+**Sub-issue orphan check:**
+```bash
+ls "$BRAIN_PATH/pages/Projects___"*___*.md 2>/dev/null
+```
+For each sub-issue page `Projects___Parent___Child.md`: check that `Projects___Parent.md` exists AND contains `[[Projects/Parent/Child]]`. If the link is missing: record as warning (no auto-add — parent structure varies).
+
+### Step 3: L3 Wiki Lint
+
+**Broken references (auto-fix: remove link):**
+For each `Wiki___*.md`, extract all `[[...]]` links. For each, derive expected file (same mapping as Step 2). If not found: remove the broken `[[link]]` token (or whole line if it's the only content). Record fix.
+
+**Hub completeness (auto-fix: add missing children):**
+A hub page is any `Wiki___X.md` with no second `___` in the name (e.g., `Wiki___Tech.md`, `Wiki___Learning.md`).
+For each hub:
+```bash
+# Find all direct children of this namespace
+ls "$BRAIN_PATH/pages/Wiki___${NAMESPACE}___"*.md 2>/dev/null
+```
+For each child file `Wiki___X___Foo-Bar.md`: the expected link in the hub is `[[Wiki/X/Foo-Bar]]`.
+```bash
+grep -q '\[\[Wiki/'"$NAMESPACE"'/'"$CHILD_NAME"'\]\]' "$hub_file"
+```
+If not found: append the child link under the relevant section using Edit. Record fix.
+
+**Stale confidence downgrade (auto-fix):**
+```bash
+grep -rl 'confidence:: high' "$BRAIN_PATH/pages/Wiki___"*.md 2>/dev/null
+```
+For each: read `updated::`. If the date is before 2026-03-03 (90 days before today 2026-06-02): use Edit to replace `confidence:: high` with `confidence:: stale`. Record fix.
+
+**Missing default properties (auto-fix where safe):**
+For each `Wiki___*.md`:
+- If `type:: entity` and `entity-type::` is missing: infer from content (look for tool/service/person/technology indicators in the page body) and add. Record fix.
+- If `type:: entity` and `status::` is missing: add `status:: active`. Record fix.
+- If `type:: knowledge` and `confidence::` is missing: add `confidence:: medium`. Record fix.
+- If `created::` or `updated::` is missing: record as warning only — do not fabricate dates.
+
+**Orphan detection (report only):**
+Build an incoming-link index: for each wiki page, collect all `[[Wiki/...]]` references it receives from other pages. Pages with 0 incoming links (excluding hub pages) → record as info.
+
+**Zero outgoing links (report only):**
+```bash
+grep -rL '\[\[' "$BRAIN_PATH/pages/Wiki___"*.md 2>/dev/null
+```
+Record each as warning.
+
+**Empty pages (report only):**
+A page where every non-blank line is a property (`word:: value` pattern) with no real content bullets. Record as warning.
+
+**Credential leak (CRITICAL — report only, never auto-fix):**
+```bash
+grep -rni 'password\s*[:=]\|api.key\s*[:=]\|apikey\s*[:=]\|secret\s*[:=]\|bearer [A-Za-z0-9]\{20,\}' \
+    "$BRAIN_PATH/pages/Wiki___"*.md 2>/dev/null
+```
+Any match → record as CRITICAL in report. Do not modify the file. Require manual review.
+
+### Step 4: Cross-Layer Checks
+
+**L1 file wiki link → nonexistent L3 page (auto-fix: remove link):**
+Already handled in Step 1 "Dead wiki links in L1 files."
+
+**L1/L3 semantic contradiction:**
+For each L1 feedback file that matched a wiki page in Step 1 near-duplicate detection: read both files. Look for directly contradictory statements on the same factual claim (e.g., "use X" vs. "use Y" for the same tool). If found: record as warning with both file paths. No auto-fix — requires human judgment.
+
+### Step 5: Commit L2/L3 fixes
+
+If any auto-fixes were applied to files inside `$BRAIN_PATH` (Steps 2 or 3):
+```bash
+# Count total fixes from all steps
+FIX_COUNT=<total count of fixes applied>
+git -C "$BRAIN_PATH" add -A
+git -C "$BRAIN_PATH" commit -m "dream-lint: auto-fix $FIX_COUNT issues (property keys, broken links, hub completeness)"
+```
+Then check `gitAutoPush` in the `.brain-config.json`:
+```bash
+GIT_PUSH=$(python3 -c "import json; d=json.load(open('$BRAIN_CONFIG')); print(d.get('gitAutoPush', False))" 2>/dev/null)
+if [[ "$GIT_PUSH" == "True" ]]; then
+    git -C "$BRAIN_PATH" push origin master --quiet &
+fi
+```
+If no fixes were applied: skip the commit entirely.
+
+### Step 6: Write report archive
+
+Append the lint results to the report file initialized in Phase 4:
+```bash
+REPORT_FILE=~/.claude/.dream-reports/$(date +%Y-%m-%d).md
+{
+  echo "## Lint Fixes Applied"
+  # list each fix, one per line, or "- none"
+  echo ""
+  echo "## Lint Warnings"
+  # list each warning, one per line, or "- none"
+  echo ""
+  echo "## Lint Critical"
+  # list each critical finding, or "- none"
+} >> "$REPORT_FILE"
+```
+
+Print a final summary to the session output:
+```
+Dream complete.
+  L1: [N projects consolidated, N fixes]
+  L2: [N brain pages checked, N fixes applied, N warnings]
+  L3: [N wiki pages checked, N fixes applied, N warnings]
+  Report: ~/.claude/.dream-reports/YYYY-MM-DD.md
+```
