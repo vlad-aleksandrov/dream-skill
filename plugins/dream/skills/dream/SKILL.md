@@ -1,8 +1,3 @@
----
-description: "Memory consolidation skill for Claude Code. Scans session transcripts for corrections, decisions, preferences, and patterns, then merges findings into persistent memory files. Auto-triggers via native Stop hook every 24hrs. Inspired by how sleep consolidates human memory."
-tags: [memory, maintenance, consolidation, autonomous, hook]
----
-
 # Dream - Memory Consolidation for Claude Code
 
 > Your AI agent dreams like you do. Consolidates memory while you sleep.
