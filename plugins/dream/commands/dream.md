@@ -1,6 +1,21 @@
 ---
-description: Run dream memory consolidation — cleans L1 memory, lints L2/L3 brain and wiki, promotes cross-project knowledge
-allowed-tools: Read, Write, Edit, Bash, Glob, Grep
+description: Spawn dream memory consolidation as a background process
+allowed-tools: Bash
 ---
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/dream/SKILL.md` and execute the dream memory consolidation — all phases in order. This is an autonomous memory maintenance task; run all phases completely without asking for confirmation.
+Spawn dream as a detached background process, then immediately return control to the user. Do NOT execute the dream phases yourself inline — delegate entirely to a separate `claude` process.
+
+Run this bash command:
+
+```bash
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/dream}"
+SKILL_PATH="$PLUGIN_ROOT/skills/dream/SKILL.md"
+[[ -f "$SKILL_PATH" ]] || SKILL_PATH="$HOME/.claude/skills/dream/SKILL.md"
+LOG_FILE="/tmp/dream-$(date +%Y%m%d-%H%M%S).log"
+nohup claude -p "Read $SKILL_PATH and execute all phases for all projects." \
+    --allowedTools "Read,Write,Edit,Bash,Glob,Grep" \
+    > "$LOG_FILE" 2>&1 &
+echo "PID=$! LOG=$LOG_FILE"
+```
+
+Report the PID and log file path to the user. Dream is running in the background — the current session is free.
