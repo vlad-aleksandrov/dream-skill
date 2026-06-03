@@ -1,6 +1,6 @@
 {
   "name": "dream",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Memory consolidation for Claude Code — keeps your L1/L2/L3 memory clean, coherent, and cross-referenced.",
   "author": {
     "name": "Vlad Aleksandrov"
