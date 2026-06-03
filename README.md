@@ -2,101 +2,114 @@
 
 Your AI agent dreams like you do. Consolidates memory while you sleep.
 
-Anthropic is building an auto-dream feature into Claude Code (currently unreleased). This skill replicates that functionality today - no feature flags, no waiting for rollout. Drop it in and your agent's memory stays clean, current, and contradiction-free.
+Anthropic is building an auto-dream feature into Claude Code (currently unreleased). This plugin replicates that functionality today — no feature flags, no waiting for rollout. Drop it in and your agent's memory stays clean, current, and contradiction-free.
 
 ## What It Does
 
-When you use Claude Code across many sessions, auto-memory accumulates noise: stale facts, contradictions, relative dates that lose meaning. Dream fixes this by running a 4-phase consolidation pass over your memory files - the same way your brain consolidates memories during sleep.
+Dream runs **6 sequential phases** every 24 hours via a Stop hook:
 
-**Phase 1 - Orient:** Reads your current memory directory to understand what exists.
+**Phase 1 — Orient:** Surveys all three memory layers — L1 (local `~/.claude/` memory), L2 (Logseq brain project pages), L3 (Logseq wiki).
 
-**Phase 2 - Gather Signal:** Scans recent session transcripts (JSONL files) for user corrections, preference changes, important decisions, and recurring patterns. Uses targeted grep, not full reads.
+**Phase 2 — Gather Signal:** Scans recent session transcripts (JSONL files) for corrections, preference changes, decisions, and recurring patterns. Uses targeted grep, not full reads.
 
-**Phase 3 - Consolidate:** Merges new findings into existing memory. Converts relative dates to absolute. Resolves contradictions. Removes references to nonexistent files. No duplicates.
+**Phase 3 — Consolidate:** Merges findings into L1 memory. Converts relative dates to absolute. Resolves contradictions. Removes references to nonexistent files. No duplicates.
 
-**Phase 4 - Prune & Index:** Rebuilds MEMORY.md as a lean index under 200 lines. Removes stale pointers. Demotes verbose entries to topic files.
+**Phase 4 — Prune & Index:** Rebuilds `MEMORY.md` as a lean index under 200 lines. Removes stale pointers. Demotes verbose entries to topic files. Writes the dream report header.
 
-## Auto-Trigger
+**Phase 5 — Lint:** Auto-applies mechanical fixes across all three layers — property key typos, broken `[[links]]`, hub completeness, stale confidence downgrades. Commits fixes to the brain git repo.
 
-Includes a native Claude Code Stop hook that checks every time you exit a session:
-- Has 24+ hours passed since the last dream?
-- If yes, flags the next session to run `/dream` automatically.
+**Phase 6 — Promote:** Moves knowledge to the right layer automatically. Cross-project `feedback_*.md` and `workflow_*.md` → L3 wiki. Project implementation details → L2 brain page. Completed project learnings → L3 wiki (distilled, not raw notes).
 
-Zero overhead when conditions aren't met (~10ms check on exit).
+Each run writes an archive entry to `~/.claude/.dream-reports/YYYY-MM-DD.md`.
 
-## Memory System Auto-Detection
+## Install
 
-On first install, the skill detects which memory system you're using:
-- **Native Claude Code** (`~/.claude/projects/*/memory/`) - default
-- **OpenClaw-style** (`./memory/` with daily logs)
-- **Project-root** (`./MEMORY.md` in project root)
+### Plugin (recommended)
 
-If nothing is detected, defaults to native Claude Code memory.
+In any Claude Code session:
 
-## Quick Start
-
-### Option 1: Plugin install (recommended)
-
-```bash
+```
 /plugin marketplace add vlad-aleksandrov/dream-skill
 /plugin install dream@dream
 ```
 
-Then run `/dream:setup` (or just `/dream:dream`) to verify and complete setup. The Stop and SessionStart hooks are registered automatically.
+The Stop hook (fires on session exit) and SessionStart hook (picks up the pending flag) are registered automatically. No settings.json edits needed.
 
-### Option 2: Run the installer
+### Manual
 
 ```bash
 git clone https://github.com/vlad-aleksandrov/dream-skill.git /tmp/dream-skill
 bash /tmp/dream-skill/install.sh --auto
 ```
 
-### Option 3: Manual install
+## Setup (one-time, after install)
 
-1. Clone the repo and copy `plugins/dream/skills/dream/SKILL.md` and `plugins/dream/hooks/*.sh` to `~/.claude/skills/dream/`
-2. Run `chmod +x ~/.claude/skills/dream/*.sh`
-3. Start a Claude Code session and say `/dream` to run it
+Dream needs to know which memory system you're using. Run these checks in a Claude Code session:
 
-## What's Included
+```bash
+# Detect your memory system
+ls ~/.claude/projects/*/memory/MEMORY.md 2>/dev/null && echo "native"
+ls ./memory/20*.md 2>/dev/null && echo "openclaw"
+ls ./MEMORY.md 2>/dev/null && echo "project-root"
+```
 
-| File | Purpose |
-|---|---|
-| `plugins/dream/skills/dream/SKILL.md` | 6-phase consolidation instructions (the skill brain) |
-| `plugins/dream/hooks/dream-hook.sh` | Stop hook — triggers dream after 24h |
-| `plugins/dream/hooks/session-start-hook.sh` | SessionStart hook — picks up .dream-pending flag |
-| `plugins/dream/hooks/should-dream.sh` | Condition checker (24hr timer) |
-| `plugins/dream/commands/dream.md` | `/dream:dream` slash command |
-| `plugins/dream/hooks/hooks.json` | Hook registrations for the plugin system |
-| `plugins/dream/references/lint-rules.md` | Phase 5 lint rules reference |
-| `plugins/dream/references/promotion-rules.md` | Phase 6 promotion rules reference |
-| `install.sh` | Manual installer with `--auto` flag (for non-plugin installs) |
-| `test-dream.sh` | Development test fixtures and verify scripts |
+Then write the config:
+
+```bash
+mkdir -p ~/.claude/skills/dream
+
+# For native Claude Code memory (most common):
+echo "DREAM_MEMORY_TYPE=native" > ~/.claude/skills/dream/.dream-config
+
+# For openclaw-style:
+# echo "DREAM_MEMORY_TYPE=openclaw" > ~/.claude/skills/dream/.dream-config
+# echo "DREAM_MEMORY_PATH=$(pwd)/memory" >> ~/.claude/skills/dream/.dream-config
+```
+
+**Logseq brain/wiki (optional):** If you use a Logseq brain with the `logseq-brain` plugin, Phases 5 and 6 will auto-detect it from the plugin's `.brain-config.json`. No extra config needed.
 
 ## Usage
 
-### Plugin install
+### Run manually
+
 ```
 /dream:dream
 ```
 
-### Automatic (after install --auto)
-Just use Claude Code normally. The Stop hook checks on every session exit. When 24 hours have passed, your next session automatically runs a dream consolidation in the background.
+This spawns dream as a background `claude` process and immediately returns the PID and log path. Your session stays free.
+
+### Automatic
+
+After install, dream fires automatically when you end a session — if 24+ hours have passed since the last run. Zero overhead when the condition isn't met (~10ms check).
+
+Dream report at next session start: the SessionStart hook checks for a new report and mentions it briefly in one line.
 
 ## Requirements
 
-- Claude Code v2.1.59+ (auto-memory support)
+- Claude Code v2.1.59+
 - No additional dependencies
+
+## L1/L2/L3 Architecture
+
+Dream operates across all three memory layers:
+
+| Layer | Location | What it holds | Dream phases |
+|-------|----------|---------------|--------------|
+| L1 | `~/.claude/projects/*/memory/` | Per-project feedback, decisions, preferences | Phases 1–4 (consolidate), Phase 5 (lint), Phase 6 (promote from) |
+| L2 | Logseq brain `Projects___*.md` | Active project context, session logs, plans | Phase 5 (lint), Phase 6 (promote from + to) |
+| L3 | Logseq wiki `Wiki___*.md` | Cross-project knowledge, tech docs, patterns | Phase 5 (lint), Phase 6 (promote to) |
 
 ## How It Compares to Anthropic's Auto-Dream
 
-| Feature | Anthropic (unreleased) | This Skill |
-|---------|----------------------|------------|
-| 4-phase consolidation | Yes | Yes |
+| Feature | Anthropic (unreleased) | This Plugin |
+|---------|----------------------|-------------|
 | Session transcript scanning | Yes | Yes |
 | Contradiction resolution | Yes | Yes |
 | Date normalization | Yes | Yes |
-| Auto-trigger | Built into binary | Stop hook + flag file |
+| Auto-trigger | Built into binary | Stop hook (plugin system) |
 | Memory system detection | Native only | Native + OpenClaw + custom |
+| L2/L3 brain + wiki lint | Unknown | Yes (Phase 5) |
+| Cross-layer promotion | Unknown | Yes (Phase 6) |
 | Available now | Behind feature flag | Yes |
 
 ## License
