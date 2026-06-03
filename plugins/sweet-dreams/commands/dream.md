@@ -9,7 +9,7 @@ Run this bash command:
 
 ```bash
 # Resolve SKILL.md: prefer plugin cache, fall back to manual install
-SKILL_PATH=$(find ~/.claude/plugins/cache/dream -name "SKILL.md" -path "*/skills/dream/SKILL.md" 2>/dev/null | sort -V | tail -1)
+SKILL_PATH=$(find ~/.claude/plugins/cache/second-brain -name "SKILL.md" -path "*/skills/dream/SKILL.md" 2>/dev/null | sort -V | tail -1)
 [[ -f "$SKILL_PATH" ]] || SKILL_PATH="$HOME/.claude/skills/dream/SKILL.md"
 if [[ ! -f "$SKILL_PATH" ]]; then
   echo "ERROR: SKILL.md not found. Is the dream plugin installed?"
