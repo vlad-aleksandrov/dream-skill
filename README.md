@@ -35,11 +35,14 @@ If nothing is detected, defaults to native Claude Code memory.
 
 ## Quick Start
 
-### Option 1: Clone into skills directory
+### Option 1: Plugin install (recommended)
 
 ```bash
-git clone https://github.com/vlad-aleksandrov/dream-skill.git ~/.claude/skills/dream
+/plugin marketplace add vlad-aleksandrov/dream-skill
+/plugin install dream@dream
 ```
+
+Then run `/dream:setup` (or just `/dream:dream`) to verify and complete setup. The Stop and SessionStart hooks are registered automatically.
 
 ### Option 2: Run the installer
 
@@ -50,25 +53,30 @@ bash /tmp/dream-skill/install.sh --auto
 
 ### Option 3: Manual install
 
-1. Copy `SKILL.md` and `should-dream.sh` to `~/.claude/skills/dream/`
-2. Run `chmod +x ~/.claude/skills/dream/should-dream.sh`
+1. Clone the repo and copy `plugins/dream/skills/dream/SKILL.md` and `plugins/dream/hooks/*.sh` to `~/.claude/skills/dream/`
+2. Run `chmod +x ~/.claude/skills/dream/*.sh`
 3. Start a Claude Code session and say `/dream` to run it
 
 ## What's Included
 
 | File | Purpose |
-|------|---------|
-| `SKILL.md` | The skill prompt - 4-phase consolidation instructions with onboarding |
-| `should-dream.sh` | Condition checker (24hr timer) |
-| `dream-hook.sh` | Stop hook that flags next session for dreaming |
-| `install.sh` | One-command installer with `--auto` flag for hook setup |
-| `test-dream.sh` | Creates test fixtures and verifies consolidation results |
+|---|---|
+| `plugins/dream/skills/dream/SKILL.md` | 6-phase consolidation instructions (the skill brain) |
+| `plugins/dream/hooks/dream-hook.sh` | Stop hook — triggers dream after 24h |
+| `plugins/dream/hooks/session-start-hook.sh` | SessionStart hook — picks up .dream-pending flag |
+| `plugins/dream/hooks/should-dream.sh` | Condition checker (24hr timer) |
+| `plugins/dream/commands/dream.md` | `/dream:dream` slash command |
+| `plugins/dream/hooks/hooks.json` | Hook registrations for the plugin system |
+| `plugins/dream/references/lint-rules.md` | Phase 5 lint rules reference |
+| `plugins/dream/references/promotion-rules.md` | Phase 6 promotion rules reference |
+| `install.sh` | Manual installer with `--auto` flag (for non-plugin installs) |
+| `test-dream.sh` | Development test fixtures and verify scripts |
 
 ## Usage
 
-### Manual
+### Plugin install
 ```
-/dream
+/dream:dream
 ```
 
 ### Automatic (after install --auto)

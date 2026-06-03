@@ -1,0 +1,7 @@
+{
+  "name": "dream-skill",
+  "version": "1.2.0",
+  "description": "Memory consolidation for Claude Code — keeps your L1/L2/L3 memory clean, coherent, and cross-referenced.",
+  "license": "MIT",
+  "author": "Vlad Aleksandrov"
+}

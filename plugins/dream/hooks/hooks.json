@@ -1,0 +1,27 @@
+{
+  "description": "Dream memory consolidation hooks — auto-triggers after sessions to keep memory clean.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start-hook.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/dream-hook.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

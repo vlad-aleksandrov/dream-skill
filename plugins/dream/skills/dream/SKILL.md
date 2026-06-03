@@ -13,6 +13,8 @@ tags: [memory, maintenance, consolidation, autonomous, hook]
 
 **Welcome! Follow these steps in order. After setup is verified, delete everything between `## ONBOARDING` and `## END ONBOARDING` from this file as the final step.**
 
+> **Plugin users (installed via `/plugin install dream@dream`):** The Stop hook and SessionStart hook are already registered by the plugin — skip Steps 2 and 3. Go straight to Step 1, then Step 4.
+
 ### Step 1: Detect memory system
 
 Before anything else, detect which memory system is in use. Run these checks:
@@ -44,8 +46,8 @@ echo "If none detected above: no memory system found"
 
 Write the detected type to the config so dream knows where to look:
 ```bash
+mkdir -p ~/.claude/skills/dream
 echo "DREAM_MEMORY_TYPE=native" > ~/.claude/skills/dream/.dream-config
-echo "DREAM_MEMORY_PATH=~/.claude/projects" >> ~/.claude/skills/dream/.dream-config
 ```
 
 Replace `native` with `openclaw` or `project-root` if that's what was detected. For `openclaw` or `project-root`, also set the path:
@@ -59,62 +61,51 @@ echo "DREAM_MEMORY_TYPE=project-root" > ~/.claude/skills/dream/.dream-config
 echo "DREAM_MEMORY_PATH=$(pwd)" >> ~/.claude/skills/dream/.dream-config
 ```
 
-### Step 2: Install the Stop hook
+### Step 2: Install the Stop hook (manual install only — skip for plugin users)
 
 Add the dream trigger to your Claude Code settings:
 
 ```bash
-SETTINGS="$HOME/.claude/settings.json"
-[ ! -f "$SETTINGS" ] && echo '{}' > "$SETTINGS"
-
 python3 -c "
 import json
-with open('$HOME/.claude/settings.json') as f:
+settings_path = '$HOME/.claude/settings.json'
+with open(settings_path) as f:
     s = json.load(f)
 s.setdefault('hooks', {}).setdefault('Stop', [])
-if not any('dream' in h.get('command','') for h in s['hooks']['Stop']):
-    s['hooks']['Stop'].append({
-        'type': 'command',
-        'command': 'bash \$HOME/.claude/skills/dream/should-dream.sh && touch \$HOME/.claude/.dream-pending || true'
-    })
-with open('$HOME/.claude/settings.json', 'w') as f:
-    json.dump(s, f, indent=2)
-    f.write('\n')
-print('Stop hook installed')
+hook_cmd = 'bash \$HOME/.claude/skills/dream/dream-hook.sh'
+if not any('dream-hook' in h.get('command','') for h in s['hooks']['Stop']):
+    s['hooks']['Stop'].append({'type': 'command', 'command': hook_cmd})
+    with open(settings_path, 'w') as f:
+        json.dump(s, f, indent=2)
+        f.write('\n')
+    print('Stop hook installed')
+else:
+    print('Stop hook already installed')
 "
 ```
 
-**What this does:** When you exit any Claude Code session, the Stop hook checks if 24+ hours have passed since the last dream. If yes, it creates a `.dream-pending` flag file. On your next session start, Claude sees the flag and runs `/dream` as a background subagent.
-
-### Step 3: Install the session-start check
+### Step 3: Add session-start check (manual install only — skip for plugin users)
 
 Add this to your global `~/.claude/CLAUDE.md` (or project CLAUDE.md):
 
 ```markdown
 ## Auto Dream
-If the file `~/.claude/.dream-pending` exists at session start, run `/dream` as a subagent in the background, then delete the flag file: `rm ~/.claude/.dream-pending`. This is the memory consolidation system - it runs automatically every 24 hours.
+If the file `~/.claude/.dream-pending` exists at session start, run `/dream:dream` as a subagent in the background, then delete the flag file: `rm ~/.claude/.dream-pending`. This is the memory consolidation system - it runs automatically every 24 hours.
 
 At every session start also run:
 `ls -t ~/.claude/.dream-reports/*.md 2>/dev/null | head -1`
 If a report file exists, read its first 20 lines and tell the user in one sentence what the last dream did (fixes applied, warnings found). Say "show dream report YYYY-MM-DD" to read the full report.
 ```
 
-### Step 4: Make should-dream.sh executable
+### Step 4: Test it
+
+Force a dream run:
 
 ```bash
-chmod +x ~/.claude/skills/dream/should-dream.sh
-```
-
-### Step 5: Test it
-
-Run a test dream to verify the full flow:
-
-```bash
-# Force the dream to trigger by creating the flag
 touch ~/.claude/.dream-pending
 ```
 
-Then tell Claude: "The .dream-pending flag exists. Run /dream now."
+Then tell Claude: "The .dream-pending flag exists. Run `/dream:dream` now."
 
 After it completes, verify:
 - The flag file `~/.claude/.dream-pending` was deleted
@@ -123,9 +114,9 @@ After it completes, verify:
 - No relative dates remain in memory files
 - MEMORY.md index is under 200 lines
 
-### Step 6: Clean up onboarding
+### Step 5: Clean up onboarding
 
-Everything is working. Now delete this entire ONBOARDING section from this SKILL.md file (everything between `## ONBOARDING` and `## END ONBOARDING`). The skill is fully set up and will auto-trigger every 24 hours via the Stop hook.
+Everything is working. Delete this entire ONBOARDING section from this SKILL.md file (everything between `## ONBOARDING` and `## END ONBOARDING`). The skill is fully set up and will auto-trigger every 24 hours.
 
 ## END ONBOARDING
 

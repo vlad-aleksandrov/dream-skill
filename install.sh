@@ -27,13 +27,20 @@ err() { echo -e "${RED}[ERR]${NC} $1"; }
 
 install_skill() {
     info "Installing dream skill to $SKILL_DIR"
-    mkdir -p "$SKILL_DIR"
-    cp "$SCRIPT_DIR/SKILL.md" "$SKILL_DIR/SKILL.md"
-    cp "$SCRIPT_DIR/should-dream.sh" "$SKILL_DIR/should-dream.sh"
-    cp "$SCRIPT_DIR/dream-hook.sh" "$SKILL_DIR/dream-hook.sh"
-    chmod +x "$SKILL_DIR/should-dream.sh" "$SKILL_DIR/dream-hook.sh"
+    mkdir -p "$SKILL_DIR/references"
 
-    # Register /dream as a Claude Code slash command
+    # Source files live inside the plugin directory in the repo.
+    PLUGIN_SRC="$SCRIPT_DIR/plugins/dream"
+
+    cp "$PLUGIN_SRC/skills/dream/SKILL.md"    "$SKILL_DIR/SKILL.md"
+    cp "$PLUGIN_SRC/hooks/should-dream.sh"    "$SKILL_DIR/should-dream.sh"
+    cp "$PLUGIN_SRC/hooks/dream-hook.sh"      "$SKILL_DIR/dream-hook.sh"
+    cp "$PLUGIN_SRC/hooks/session-start-hook.sh" "$SKILL_DIR/session-start-hook.sh"
+    cp "$PLUGIN_SRC/references/"*.md          "$SKILL_DIR/references/"
+    chmod +x "$SKILL_DIR/should-dream.sh" "$SKILL_DIR/dream-hook.sh" "$SKILL_DIR/session-start-hook.sh"
+
+    # Register /dream as a Claude Code slash command (manual install only;
+    # plugin users get /dream:dream via the plugin system).
     mkdir -p "$HOME/.claude/commands"
     cat > "$HOME/.claude/commands/dream.md" << 'CMDEOF'
 Read `~/.claude/skills/dream/SKILL.md` and execute the dream memory consolidation — all phases in order. This is an autonomous memory maintenance task; run all phases completely without asking for confirmation.
@@ -114,10 +121,14 @@ else:
     echo ""
     info "How it works:"
     info "  1. When you exit a Claude Code session, the Stop hook fires"
-    info "  2. should-dream.sh checks: 24hrs passed? 5+ sessions?"
-    info "  3. If both true: spawns claude in background to run /dream"
-    info "  4. Dream consolidates memory, writes timestamp, resets the 24hr timer"
+    info "  2. should-dream.sh checks: 24hrs passed?"
+    info "  3. If yes: spawns claude in background to run all 6 phases"
+    info "  4. Dream consolidates L1 memory, lints L2/L3, promotes cross-project knowledge"
     info "  5. Zero overhead when conditions aren't met (~10ms check)"
+    info ""
+    info "Tip: Install via the plugin system for the best experience:"
+    info "  /plugin marketplace add vlad-aleksandrov/dream-skill"
+    info "  /plugin install dream@dream"
 }
 
 uninstall() {
