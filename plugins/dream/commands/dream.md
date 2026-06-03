@@ -8,9 +8,13 @@ Spawn dream as a detached background process, then immediately return control to
 Run this bash command:
 
 ```bash
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/dream}"
-SKILL_PATH="$PLUGIN_ROOT/skills/dream/SKILL.md"
+# Resolve SKILL.md: prefer plugin cache, fall back to manual install
+SKILL_PATH=$(find ~/.claude/plugins/cache/dream -name "SKILL.md" -path "*/skills/dream/SKILL.md" 2>/dev/null | sort -V | tail -1)
 [[ -f "$SKILL_PATH" ]] || SKILL_PATH="$HOME/.claude/skills/dream/SKILL.md"
+if [[ ! -f "$SKILL_PATH" ]]; then
+  echo "ERROR: SKILL.md not found. Is the dream plugin installed?"
+  exit 1
+fi
 LOG_FILE="/tmp/dream-$(date +%Y%m%d-%H%M%S).log"
 nohup claude -p "Read $SKILL_PATH and execute all phases for all projects." \
     --allowedTools "Read,Write,Edit,Bash,Glob,Grep" \

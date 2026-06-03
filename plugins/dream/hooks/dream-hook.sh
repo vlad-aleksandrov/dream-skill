@@ -2,14 +2,15 @@
 #
 # dream-hook.sh - Stop hook: checks dream conditions and triggers consolidation.
 #
-# In plugin mode:  CLAUDE_PLUGIN_ROOT is set by the plugin system.
-# In manual mode:  CLAUDE_PLUGIN_ROOT is unset; falls back to ~/.claude/skills/dream.
+# Resolves its own location via $0 (absolute path when invoked by the plugin
+# system), so no dependency on CLAUDE_PLUGIN_ROOT being set as an env var.
 
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/dream}"
-SHOULD_DREAM="$PLUGIN_ROOT/hooks/should-dream.sh"
+HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(dirname "$HOOKS_DIR")"
+SHOULD_DREAM="$HOOKS_DIR/should-dream.sh"
 SKILL_PATH="$PLUGIN_ROOT/skills/dream/SKILL.md"
 
-# Manual-install fallback: scripts lived flat in the skill dir before plugin format.
+# Manual-install fallback
 [[ -f "$SHOULD_DREAM" ]] || SHOULD_DREAM="$HOME/.claude/skills/dream/should-dream.sh"
 [[ -f "$SKILL_PATH"   ]] || SKILL_PATH="$HOME/.claude/skills/dream/SKILL.md"
 
@@ -20,5 +21,4 @@ if bash "$SHOULD_DREAM" 2>/dev/null; then
     echo "Dream consolidation started in background (PID: $!)"
 fi
 
-# Always exit 0 so we don't block the session from closing.
 exit 0

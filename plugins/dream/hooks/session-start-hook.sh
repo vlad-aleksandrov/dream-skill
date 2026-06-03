@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# session-start-hook.sh - SessionStart hook: picks up the .dream-pending flag and
-# runs dream as a background subagent.
-#
-# The flag is set by dream-hook.sh when the Stop hook fires but direct spawning
-# isn't available, or by the CLAUDE.md instruction for manual-install users.
+# session-start-hook.sh - SessionStart hook: picks up the .dream-pending flag
+# and runs dream as a background subagent.
 
 PENDING="$HOME/.claude/.dream-pending"
 [[ -f "$PENDING" ]] || exit 0
 
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/dream}"
+HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(dirname "$HOOKS_DIR")"
 SKILL_PATH="$PLUGIN_ROOT/skills/dream/SKILL.md"
+
+# Manual-install fallback
 [[ -f "$SKILL_PATH" ]] || SKILL_PATH="$HOME/.claude/skills/dream/SKILL.md"
 
 rm -f "$PENDING"
