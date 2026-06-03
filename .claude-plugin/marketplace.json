@@ -1,18 +1,18 @@
 {
-  "name": "second-brain",
+  "name": "second-brain-dreams",
   "owner": {
     "name": "Vlad Aleksandrov",
     "github": "vlad-aleksandrov"
   },
   "metadata": {
     "description": "Memory consolidation for Claude Code. Cleans, deduplicates, and promotes information across L1/L2/L3 memory layers during idle time.",
-    "version": "1.2.3"
+    "version": "1.2.4"
   },
   "plugins": [
     {
       "name": "sweet-dreams",
       "description": "6-phase memory consolidation — L1 cleanup, L2/L3 lint, cross-layer promotion. Auto-triggers every 24h via Stop hook.",
-      "version": "1.2.3",
+      "version": "1.2.4",
       "author": {
         "name": "Vlad Aleksandrov"
       },

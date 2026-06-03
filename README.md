@@ -30,7 +30,7 @@ In any Claude Code session:
 
 ```
 /plugin marketplace add vlad-aleksandrov/dream-skill
-/plugin install sweet-dreams@second-brain
+/plugin install sweet-dreams@second-brain-dreams
 ```
 
 The Stop hook (fires on session exit) and SessionStart hook (picks up the pending flag) are registered automatically. No settings.json edits needed.

@@ -128,7 +128,7 @@ else:
     info ""
     info "Tip: Install via the plugin system for the best experience:"
     info "  /plugin marketplace add vlad-aleksandrov/dream-skill"
-    info "  /plugin install sweet-dreams@second-brain"
+    info "  /plugin install sweet-dreams@second-brain-dreams"
 }
 
 uninstall() {
