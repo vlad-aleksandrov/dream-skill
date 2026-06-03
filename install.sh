@@ -30,7 +30,7 @@ install_skill() {
     mkdir -p "$SKILL_DIR/references"
 
     # Source files live inside the plugin directory in the repo.
-    PLUGIN_SRC="$SCRIPT_DIR/plugins/dream"
+    PLUGIN_SRC="$SCRIPT_DIR/plugins/sweet-dreams"
 
     cp "$PLUGIN_SRC/skills/dream/SKILL.md"    "$SKILL_DIR/SKILL.md"
     cp "$PLUGIN_SRC/hooks/should-dream.sh"    "$SKILL_DIR/should-dream.sh"
@@ -128,7 +128,7 @@ else:
     info ""
     info "Tip: Install via the plugin system for the best experience:"
     info "  /plugin marketplace add vlad-aleksandrov/dream-skill"
-    info "  /plugin install dream@dream"
+    info "  /plugin install sweet-dreams@second-brain"
 }
 
 uninstall() {

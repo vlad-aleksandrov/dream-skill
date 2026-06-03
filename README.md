@@ -30,7 +30,7 @@ In any Claude Code session:
 
 ```
 /plugin marketplace add vlad-aleksandrov/dream-skill
-/plugin install dream@dream
+/plugin install sweet-dreams@second-brain
 ```
 
 The Stop hook (fires on session exit) and SessionStart hook (picks up the pending flag) are registered automatically. No settings.json edits needed.
@@ -73,7 +73,7 @@ echo "DREAM_MEMORY_TYPE=native" > ~/.claude/skills/dream/.dream-config
 ### Run manually
 
 ```
-/dream:dream
+/sweet-dreams:dream
 ```
 
 This spawns dream as a background `claude` process and immediately returns the PID and log path. Your session stays free.
