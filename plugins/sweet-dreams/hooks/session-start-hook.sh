@@ -19,6 +19,7 @@ SKILL_PATH="$PLUGIN_ROOT/skills/dream/SKILL.md"
 rm -f "$PENDING"
 
 DREAM_CHILD=1 nohup claude -p "Read $SKILL_PATH and execute all phases for all projects." \
+    --strict-mcp-config \
     --allowedTools "Read,Write,Edit,Bash,Glob,Grep" \
     > /tmp/dream-$(date +%Y%m%d-%H%M%S).log 2>&1 &
 
