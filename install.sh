@@ -36,6 +36,7 @@ install_skill() {
     cp "$PLUGIN_SRC/hooks/should-dream.sh"    "$SKILL_DIR/should-dream.sh"
     cp "$PLUGIN_SRC/hooks/dream-hook.sh"      "$SKILL_DIR/dream-hook.sh"
     cp "$PLUGIN_SRC/hooks/session-start-hook.sh" "$SKILL_DIR/session-start-hook.sh"
+    cp "$PLUGIN_SRC/hooks/dream-guard.sh"     "$SKILL_DIR/dream-guard.sh"
     cp "$PLUGIN_SRC/references/"*.md          "$SKILL_DIR/references/"
     chmod +x "$SKILL_DIR/should-dream.sh" "$SKILL_DIR/dream-hook.sh" "$SKILL_DIR/session-start-hook.sh"
 

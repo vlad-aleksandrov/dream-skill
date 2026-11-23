@@ -15,13 +15,14 @@ SKILL_PATH="$PLUGIN_ROOT/skills/dream/SKILL.md"
 [[ -f "$SKILL_PATH"   ]] || SKILL_PATH="$HOME/.claude/skills/dream/SKILL.md"
 
 [[ -n "${DREAM_CHILD:-}" ]] && exit 0
-pgrep -f '[s]kills/dream/SKILL.md and execute' >/dev/null && exit 0
+bash "$SHOULD_DREAM" >/dev/null 2>&1 || exit 0
+source "$HOOKS_DIR/dream-guard.sh"
 
 if bash "$SHOULD_DREAM" --claim 2>/dev/null; then
     DREAM_CHILD=1 nohup claude -p "Read $SKILL_PATH and execute all phases for all projects." \
         --strict-mcp-config \
         --allowedTools "Read,Write,Edit,Bash,Glob,Grep" \
-        > /tmp/dream-$(date +%Y%m%d-%H%M%S).log 2>&1 &
+        > /tmp/dream-$(date +%Y%m%d-%H%M%S).log 2>&1 9>&- &
     echo "Dream consolidation started in background (PID: $!)"
 fi
 
