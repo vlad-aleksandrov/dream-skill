@@ -9,7 +9,7 @@ PENDING="$HOME/.claude/.dream-pending"
 [[ -f "$PENDING" ]] || exit 0
 
 HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$HOOKS_DIR/dream-guard.sh"
+source "$HOOKS_DIR/dream-guard.sh" || exit 0
 PLUGIN_ROOT="$(dirname "$HOOKS_DIR")"
 SKILL_PATH="$PLUGIN_ROOT/skills/dream/SKILL.md"
 

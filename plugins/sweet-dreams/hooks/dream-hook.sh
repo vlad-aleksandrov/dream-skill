@@ -16,7 +16,7 @@ SKILL_PATH="$PLUGIN_ROOT/skills/dream/SKILL.md"
 
 [[ -n "${DREAM_CHILD:-}" ]] && exit 0
 bash "$SHOULD_DREAM" >/dev/null 2>&1 || exit 0
-source "$HOOKS_DIR/dream-guard.sh"
+source "$HOOKS_DIR/dream-guard.sh" || exit 0
 
 if bash "$SHOULD_DREAM" --claim 2>/dev/null; then
     DREAM_CHILD=1 nohup claude -p "Read $SKILL_PATH and execute all phases for all projects." \
