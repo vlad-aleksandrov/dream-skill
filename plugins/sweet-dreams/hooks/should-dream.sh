@@ -22,13 +22,13 @@ fi
 LAST_DREAM_FILE=""
 case "$DREAM_MEMORY_TYPE" in
     native)
-        for dir in "$HOME/.claude/projects/"*/memory/; do
-            if [[ -f "$dir/.last-dream" ]]; then
-                LAST_DREAM_FILE="$dir/.last-dream"
-                break
-            fi
-        done
+        # Newest stamp wins: glob order would pin the gate to whichever project sorts first.
+        LAST_DREAM_FILE=$(ls -t "$HOME/.claude/projects/"*/memory/.last-dream 2>/dev/null | head -1 || true)
         if [[ -z "$LAST_DREAM_FILE" ]]; then
+            if [[ "${1:-}" == "--claim" ]]; then
+                FIRST_DIR=$(ls -d "$HOME/.claude/projects/"*/memory/ 2>/dev/null | head -1 || true)
+                [[ -n "$FIRST_DIR" ]] && date +%s > "$FIRST_DIR/.last-dream"
+            fi
             echo "Dream conditions met: first-run (no .last-dream found)"
             exit 0
         fi
@@ -38,6 +38,7 @@ case "$DREAM_MEMORY_TYPE" in
         DREAM_MEMORY_PATH="${DREAM_MEMORY_PATH/#\~/$HOME}"
         LAST_DREAM_FILE="$DREAM_MEMORY_PATH/.last-dream"
         if [[ ! -f "$LAST_DREAM_FILE" ]]; then
+            [[ "${1:-}" == "--claim" ]] && date +%s > "$LAST_DREAM_FILE"
             echo "Dream conditions met: first-run"
             exit 0
         fi
@@ -52,6 +53,9 @@ HOURS_ELAPSED=$(( ELAPSED / 3600 ))
 if (( HOURS_ELAPSED < 24 )); then
     exit 1
 fi
+
+# The dream itself runs headless and cannot write under ~/.claude, so the launcher closes the gate.
+[[ "${1:-}" == "--claim" ]] && date +%s > "$LAST_DREAM_FILE"
 
 echo "Dream conditions met: ${HOURS_ELAPSED}h since last dream"
 exit 0

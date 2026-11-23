@@ -3,6 +3,9 @@
 # session-start-hook.sh - SessionStart hook: picks up the .dream-pending flag
 # and runs dream as a background subagent.
 
+[[ -n "${DREAM_CHILD:-}" ]] && exit 0
+pgrep -f '[s]kills/dream/SKILL.md and execute' >/dev/null && exit 0
+
 PENDING="$HOME/.claude/.dream-pending"
 [[ -f "$PENDING" ]] || exit 0
 
@@ -15,7 +18,7 @@ SKILL_PATH="$PLUGIN_ROOT/skills/dream/SKILL.md"
 
 rm -f "$PENDING"
 
-nohup claude -p "Read $SKILL_PATH and execute all phases for all projects." \
+DREAM_CHILD=1 nohup claude -p "Read $SKILL_PATH and execute all phases for all projects." \
     --allowedTools "Read,Write,Edit,Bash,Glob,Grep" \
     > /tmp/dream-$(date +%Y%m%d-%H%M%S).log 2>&1 &
 
